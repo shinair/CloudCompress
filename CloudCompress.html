@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>CloudCompress</title>
+    <link rel="stylesheet" href="https://unpkg.com/rivet-core@2.3.1/css/rivet.min.css">
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.957.0.min.js"></script>
+</head>
+
+<body class="rvt-layout">
+    <main id="main-content" class="rvt-flex rvt-flex-column rvt-grow-1">
+        <div class="rvt-bg-black-000 rvt-border-bottom rvt-p-top-xl">
+            <div class="rvt-container-lg rvt-prose rvt-flow rvt-p-bottom-xl">
+                <h1 class="rvt-m-top-xs">Compress images online and download!</h1>
+            </div>
+        </div>
+        <div class="rvt-layout__wrapper [ rvt-p-tb-xxl ]">
+            <div class="rvt-container-lg">
+                <div class="rvt-row">
+                    <div class="rvt-cols-8-md rvt-flow rvt-prose">
+                        <div class="rvt-prose rvt-flow">
+                            <div class="rvt-empty-state">
+                                <div class="rvt-empty-state__content">
+                                    <p>Select a PNG/JPEG image and click on upload. Download the compressed image when
+                                        it's ready!</p>
+                                </div>
+                                <div class="rvt-empty-state__actions">
+                                    <div class="rvt-file" data-rvt-file-input="singleFileInput">
+                                        <input type="file" id="file-chooser"
+                                            data-rvt-file-input-button="singleFileInput"
+                                            aria-describedby="file-description"> &nbsp &nbsp
+                                        <label for="file-chooser" class="rvt-button">
+                                            <span>Choose a file</span>
+                                        </label> &nbsp &nbsp
+                                        <button id="upload-button" class="rvt-button">
+                                            <span>Upload</span>
+                                        </button> &nbsp &nbsp
+                                        <button id="download-button" class="rvt-button" style="display: none;">
+                                            <span>Download Compressed Image</span>
+                                        </button> &nbsp &nbsp
+                                        <div class="rvt-file__preview" data-rvt-file-input-preview="singleFileInput"
+                                            id="file-description"> &nbsp &nbsp
+                                            No file selected
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+        </div>
+    </main>
+    <script src="https://unpkg.com/rivet-core@2.3.1/js/rivet.min.js"></script>
+    <script>
+        Rivet.init();
+    </script>
+    <script>
+        AWS.config.region = 'us-east-2';
+        AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+            IdentityPoolId: 'us-east-2:your_identity_pool_id', 
+        });
+
+        const s3 = new AWS.S3({
+            apiVersion: '2006-03-01',
+            params: { Bucket: 'uploaded_s3_bucket_name' },
+        });
+
+        const compressedBucket = 'compressed_s3_bucket_name';
+
+        document.getElementById('upload-button').addEventListener('click', function () {
+            const file_Chooser = document.getElementById('file-chooser');
+            const file = file_Chooser.files[0];
+            if (file) {
+                const fileName = file.name;
+                const params = {
+                    Key: fileName,
+                    Body: file,
+                    ContentType: file.type,
+                };
+                s3.upload(params, function (err, data) {
+                    if (err) {
+                        console.error('Error uploading the file.', err);
+                    } else {
+                        console.log('File uploaded successfully.', data);
+                        document.getElementById('download-button').style.display = 'block';
+                    }
+                });
+            } else {
+                console.log('No file chosen.');
+            }
+        });
+
+        document.getElementById('download-button').addEventListener('click', async function () {
+            try {
+                const file_Chooser = document.getElementById('file-chooser');
+                const file = file_Chooser.files[0];
+                const fileName = file.name.split('.')[0];
+                const extension = file.name.split('.').pop().toLowerCase();
+                const compressedKey = `${fileName}.${extension}`;
+
+                const downloadParams = {
+                    Bucket: compressedBucket,
+                    Key: compressedKey,
+                };
+                const compressedImage = await s3.getObject(downloadParams).promise();
+                const url = URL.createObjectURL(new Blob([compressedImage.Body]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `compressed-${compressedKey}`;
+                link.click();
+                URL.revokeObjectURL(url);
+
+                // Delete the compressed image after download
+                await s3.deleteObject(downloadParams).promise();
+                console.log(`Deleted compressed image: ${compressedKey}`);
+
+            } catch (error) {
+                console.error('Error downloading the compressed image.', error);
+            }
+        });
+    </script>
+</body>
+</html>
